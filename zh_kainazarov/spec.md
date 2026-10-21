@@ -221,8 +221,11 @@ Definitions, for a single character `c`:
   uses NFD; this spec uses NFC so that keys are shown in composed form. Folding
   can produce a decomposed sequence, which the second NFC recomposes. Folding a
   string that is not yet normalized can give a different result, which the
-  first NFC prevents. In Russian, Kazakh, and English text the first NFC never
-  changes a key, but it does for Greek, as the row with U+0345 shows.
+  first NFC prevents. That happens only when a word contains U+0345 COMBINING
+  GREEK YPOGEGRAMMENI, which folds to the Greek letter `ι`, as the row with
+  U+0345 shows. Elsewhere the first NFC can change the text but not the key: in
+  the `и` + U+0306 row it composes `й`, but the second NFC would compose it
+  too.
 - Case folding is applied to each word after scanning (step 5), not to the
   whole text before it. The two differ when folding turns a non-letter into a
   letter: U+0345 is a mark that folds to the Greek letter `ι`.
@@ -317,8 +320,10 @@ merged:
   rule.
 - Parsing HTML or decoding entities: `&amp;` gives the word `amp`.
 - The 2017 Kazakh Latin alphabet, which wrote some letters with an apostrophe,
-  such as `on'` for `оң` ("right"). A trailing apostrophe is discarded, so
-  `on'` gives the same key as `on` (`он`, "ten").
+  such as `on'` for Cyrillic `оң` ("right"). A trailing apostrophe is
+  discarded, so `on'` gives the Latin key `on`, which is also the key for `on`,
+  the 2017 spelling of Cyrillic `он` ("ten"). Keys are never transliterated to
+  Cyrillic.
 - Scripts written without spaces between words, such as Chinese or Thai. The
   procedure still gives a defined result there (a whole run of letters is one
   word), but it is not a useful one.

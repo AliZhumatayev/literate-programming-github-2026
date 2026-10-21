@@ -51,7 +51,7 @@ byte-for-byte the same as in the reviewed version.
 
 > 2. ~~**The tested-versions claim will go stale, and nothing re-checks it.** Item 7 says every row was checked on CPython 3.10–3.14 (`spec.md:67-68`), while item 6 allows any version from 3.10 up. Python 3.15 is due around now and likely ships a newer Unicode version. There's no test file in the directory, so the claim is only as good as the last manual run. Turning the tables into a pytest or doctest would let you re-check it and extend the range.~~
 
-**Note:** I rejected this. Item 7 claims only the versions the rows were actually run on (CPython 3.10.16, 3.11.15, 3.12.8, 3.13.1, and 3.14.8, all 60 rows passing), and it already says other Unicode versions may differ. On 21 October 2026 only a beta of Python 3.15 was available. A test file would also put a third file in this directory, and the assignment asks for exactly `spec.md` and `llm-review.md`.
+**Note:** I rejected this. Item 7 claims only the versions the rows were actually run on (CPython 3.10.16, 3.11.15, 3.12.8, 3.13.1, and 3.14.8, all 60 rows passing), and it already says other Unicode versions may differ. Python 3.15.0 was released on 9 October 2026, but I had not run the rows on it, so the claim stays limited to the versions above. A test file would also put a third file in this directory, and the assignment asks for exactly `spec.md` and `llm-review.md`.
 
 > 3. **It's unclear which parts are normative.** The intro says sections 1–2 are normative and 3–7 follow from them (`spec.md:14-18`). That leaves two gaps:
 >    - Section 1 contains a table: is it normative?

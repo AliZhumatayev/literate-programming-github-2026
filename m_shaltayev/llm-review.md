@@ -2,94 +2,113 @@
 
 ## Setup
 
-- LLM: Claude, run as a Claude Code subagent with the model sonnet 5.5. The agent used its default effort level.
-- Prompt (the third and last review run):
+- LLM: Claude Opus 5.5 (`claude-opus-5-5`), run as a Claude Code subagent. The agent used its default effort level.
+- Prompt:
 
   ```
-  Review /Users/iomiras/uni/literate-programming-github-2026/m_shaltayev/spec.md. Read-only: no edit, no write, no run code. Reply w/ review text only. Find errors, contradictions, underspecified behavior, ambiguity that lets 2 valid impls give different output. Each finding: quote spec, say problem.
+  Review /Users/iomiras/uni/literate-programming-github-2026/m_shaltayev/spec.md. Read-only: no edit, no write in repo. Find errors, contradictions, underspecified behavior, ambiguity that lets 2 valid impls give different output. Also flag needless length or repetition. Each finding: quote spec, say problem, suggest fix. Group: Must fix / Should fix / Minor. Reply w/ review text only.
   ```
 
-- I ran the same prompt three times. After rounds 1 and 2, I changed the spec to fix the findings. Round 1 found 14 points, round 2 found 15, and round 3 found 12. Round 3 is the last review. Strikethrough marks output that I judged incorrect or irrelevant.
-- After round 3, I changed the spec to fix the findings. I did not run a fourth review on the final text.
+- Strikethrough marks output that I judged incorrect or irrelevant.
 
 ## Output of the last review
 
-Review of spec.md
+Review of /Users/iomiras/uni/literate-programming-github-2026/m_shaltayev/spec.md
 
-I found no hard contradiction in the examples. I checked each expected output by hand against the rules, and all of them are correct. The findings below are in order of impact.
+How I checked the spec
 
-1. Variation selectors: the range is inconsistent (real ambiguity).
-- Rule 3: "any character in Unicode category `Mn` or `Mc`, except the variation selectors U+FE00 to U+FE0F."
-- Rule 7: "variation selectors ... separate words."
-- Problem: Rule 7 does not give a range. Other variation selectors are category `Mn`: U+E0100 to U+E01EF, and Mongolian U+180B to U+180D and U+180F.
-- Under rule 3 they are marks and attach to the previous letter. Under rule 7 they separate words.
-- Two valid implementations give different words for `a\U000E0100b`.
-- Fix: name the range in rule 7 as U+FE00 to U+FE0F only, or exclude all variation selectors from rule 3.
+I wrote a reference implementation and a harness that reads every table row from the spec:
 
-2. Enclosing marks (`Me`) are not named.
-- Rule 3: marks are `Mn` or `Mc`.
-- `Me`, for example U+20E3 combining keycap, falls under rule 7 "Every other character". That is correct but never stated.
-- A reader can think `Me` is a mark. Fix: add `Me` to the list in rule 7.
+- /private/tmp/claude-501/-Users-iomiras-uni-literate-programming-github-2026/273601c4-0575-4ba6-a3a0-4726e9fe39e2/scratchpad/ref/top_words.py
+- /private/tmp/claude-501/-Users-iomiras-uni-literate-programming-github-2026/273601c4-0575-4ba6-a3a0-4726e9fe39e2/scratchpad/ref/check.py
 
-3. Circular wording in rule 6.
-- "A joiner at the start of a word ... do not join."
-- Rule 5 says "A word starts at a letter", so a joiner can never be at the start of a word.
-- The outcome is clear from the examples. The sentence is still circular.
-- Fix: write "A joiner that has no letter before it, or no letter after it, separates words."
+Results:
 
-4. Rule 6 repeats the mark logic and hides a case.
-- "A mark that does not follow a letter, a mark, or a joiner-letter pair"
-- A joiner-letter pair ends in a letter, so the clause is redundant.
-- The rule does not say that a mark after a joiner is dropped because the joiner ends the word. Only the example `a-́` shows this.
-- Fix: state it in the rule.
+- All 45 example rows and the realistic-text case pass on Python 3.9.6 (Unicode 13), 3.11 (Unicode 14), 3.13 (Unicode 15.1), and 3.14 (Unicode 16).
+- The spec file is already NFC.
+- The Unicode-version clause is safe. I compared every character that Unicode 13 assigns, using Python 3.9 and Python 3.14. Only U+1734 and U+171E change, and they change from Mn to Mc. The spec counts both categories as marks, so the output does not change.
+- The examples contain no errors. The algorithm in rule 5 is complete. I found only one gap that lets two valid implementations give different output (Should fix, item 1).
 
-5. "Single" joiner in rule 4.
-- "a single apostrophe ... or a single hyphen-minus"
-- "Single" can mean "one character" or "one joiner in a row". Rule 6 uses the second meaning.
-- Fix: delete "single" from rule 4.
+MUST FIX
 
-6. The `str` subclass is underspecified.
-- "A `str` subclass is accepted."
-- A subclass can override `lower`, `__iter__`, `__getitem__` and similar methods. An implementation that uses them can differ from one that first converts to plain `str`.
-- The type of the returned `word` is not stated. It is probably a plain `str`.
-- Fix: say "Convert to plain `str` first" and "`word` is an exact `str`".
+1. "The limit of 10 cuts `россии`, the last word in code point order."
+   Problem: This statement is false. `столица` (с, U+0441) comes after `россии` (р, U+0440) in code point order. The limit cuts `россии` because it is the last word among the words with count 1. A reader can think that the tie-break applies to all words, not only within one count.
+   Fix: "The limit of 10 cuts `россии`. It is the last of the words with count 1 in code point order."
 
-7. The Unicode data depends on the interpreter.
-- "The Unicode data is the data of the Python interpreter that runs the function."
-- Python 3.9 uses Unicode 13. Python 3.13 uses Unicode 15.1 or later. Characters added later change `isalpha`, category and `lower()` results.
-- The examples use only old characters, so they are safe.
-- Fix: say the tests use only characters that exist in Unicode 13.
+SHOULD FIX
 
-8. The performance claim is imprecise.
-- "The running time is O(n + d log d)"
-- Hash counting is expected O(1) per word, not worst case. String compare and hash cost O(word length), so the sort is not strictly O(d log d).
-- Fix: say "expected" and "ignoring word length in comparisons", or drop the bound.
+1. "A `str` subclass is accepted. The function converts it to an exact `str` first"
+   Problem: The spec does not say how to convert. `str(text)` calls the `__str__` method of the subclass, and `str.__str__(text)` does not. I tested a subclass with `__str__` that returns 'zzz'. `str(s)` gives 'zzz', and `str.__str__(s)` gives the original text. Two valid implementations then give different output. Also, `unicodedata.normalize` returns the subclass object unchanged on Python 3.9 to 3.13 when the text is already NFC. Thus an implementation that skips the conversion still works, except for the overridden methods.
+   Fix: Write "The function converts it with `str.__str__(text)`." As an alternative, write "Behavior is not specified for subclasses that override `str` methods."
 
-9. ~~Non-target scripts are underspecified.~~
-- ~~"Other scripts follow the same rules, but the tests do not check them."~~
-- ~~Under `isalpha`, a run of CJK characters is one word, because no spaces cut it.~~
-- ~~For Arabic-script Kazakh, U+200C ZWNJ is `Cf` and separates words.~~
-- ~~This is stated as untested. A reader should still know that the result is probably not what a user wants.~~
+2. "6. A mark that does not come right after a letter or a mark is not part of a word."
+   Problem: The rule suggests the converse: a mark right after a mark is part of a word. That is false for `3́́d`, where the second mark comes after a mark that is not in a word. Rule 5 already decides all word boundaries, so rule 6 adds nothing and can mislead a reader.
+   Fix: Delete rule 6. Alternatively, write "A mark is part of a word only when rule 5 reaches it."
 
-10. Escape notation in the examples.
-- "`\n`, `\t`, `\xXX`, and `\uXXXX` stand for one character each"
-- No notation exists for a literal backslash, and `\U` for characters above U+FFFF is not listed.
-- The current examples do not need either, but a test author who writes new cases will.
-- Fix: add `\\` and `\UXXXXXXXX`.
+3. "7. Every other character separates words."
+   Problem: The rule does not say what "other" refers to. Rule 5 already says that a word "ends at the first character that does not continue it". Rules 6 and 7 thus give a second, weaker description of the same boundary.
+   Fix: Merge rules 6 and 7 into one sentence that only explains: "All characters that rule 5 does not include are separators, for example digits, variation selectors, `Cf` characters, and `Me` marks."
 
-11. Minor wording issues.
-- Line 117: "The digits and the hyphen next to them are dropped." The hyphen is dropped because it trails the word, not because of the digits. The sentence suggests a special rule for digits.
-- ~~Line 27 repeats lines 25 and 26. It is consistent, so this is only redundancy.~~
-- Normalization step 3 and the bullet "Do not normalize again" say the same thing twice. Step 3 is not an action.
+4. Section name "Normalization" and the sentence "Do not normalize again after `str.lower()`."
+   Problem: The spec uses "normalize" with two meanings: Unicode NFC (rule 1) and the word-key steps (the section). The sentence "do not normalize again" can mean "do not apply NFC" or "do not apply this section again".
+   Fix: Rename the section to "Word key". Change the sentence to "Do not apply NFC again after `str.lower()`."
 
-12. Per-word lowercasing and Greek final sigma.
-- "Lowercase each word alone, not the whole text."
-- This is clear. But `ΟΔΟΣ` gives `οδος` with the final `ς`, because `str.lower()` handles the final sigma inside the word.
-- An implementation that lowercases each character alone gives `οδοσ`. Both can be called "lowercase".
-- Fix: add an example, or say "call `str.lower()` on the whole word string".
+5. The row with `кто́-то` contains a literal U+0301 character.
+   Problem: The other rows write marks as `́`. Here the mark is invisible, so a copy-and-paste operation or an editor can remove it, and the row then becomes the same as `кто-то`. The invisible character also breaks the alignment of the table column.
+   Fix: Write the input as `кто́-то` and the output as `[("кто́-то", 1)]`.
 
-## What I did with the output
+6. "Normalize the text to Unicode form NFC ... Do this first, before any other step."
+   Problem: The type check and the conversion of a `str` subclass (Interface section) must come before NFC. The word "first" contradicts that order.
+   Fix: Write "Do this before you find the words."
 
-- I accepted findings 1 to 8, 10, 11 (first and third points), and 12. I changed the spec for each one. For finding 12, I changed the wording and did not add a Greek example, because the tests do not check Greek.
-- I rejected finding 9. The spec says the target scripts are Latin, Cyrillic, and Kazakh. It also says that other scripts are not checked. A longer note adds no behavior that a test can check.
-- I rejected the redundancy point in finding 11 (line 27). The sentence gives a general rule, and the example after it only shows one case.
+MINOR
+
+1. "`word` is the lowercase form of the word"
+   Problem: The word key also replaces `’` with `'`.
+   Fix: Write "`word` is the normalized form of the word".
+
+2. "the pairs with the smallest `(-count, word)`, in that order."
+   Problem: "In that order" is vague.
+   Fix: Write "sorted by `(-count, word)` in ascending order. Keep the first 10."
+
+3. Example decision text: "Any non-letter separates words." (row `cat;dog/cat\x7cdog`).
+   Problem: This contradicts rule 5, because marks and joiners are non-letters that can continue a word.
+   Fix: Write "Punctuation and symbols separate words."
+
+4. "The input is the text between the backticks."
+   Problem: The "empty string" row has no backticks, and the realistic input is in a code block.
+   Fix: Add "or as stated in words, or in a code block".
+
+5. "invisible format characters (Unicode category `Cf`)"
+   Problem: Some `Cf` characters are visible, for example U+0600 and U+06DD.
+   Fix: Write "format characters (Unicode category `Cf`)".
+
+6. Rule 8: "Latin, Cyrillic, and Kazakh text is the target."
+   Problem: Kazakh is a language that uses the Cyrillic script. The sentence mixes scripts and languages, and the Purpose section names languages (English, Russian, Kazakh).
+   Fix: Write "English, Russian, and Kazakh text is the target."
+
+7. "Call `str.lower()` on the whole word string. Do not lowercase the whole text, and do not lowercase each character alone."
+   Problem: In Python, these three methods give different results only for the Greek final sigma. The tests do not check Greek, so the rule has no tested effect.
+   Fix: Keep the rule and add the reason in a few words ("this affects the Greek final sigma"). Alternatively, cut the rule to "Call `str.lower()` on each word."
+
+8. Design risks to confirm. The spec marks these as intended, but they can give poor results for news text:
+   - A soft hyphen (U+00AD) from a CMS splits a word.
+   - `кто‑то` with U+2011 gives `кто` and `то`.
+   - `Москва́` and `Москва` count as two different words.
+
+   If you keep these decisions, no change is necessary. Otherwise, remove `Cf` characters inside a word, and treat U+2010 and U+2011 as joiners.
+
+9. The examples do not test some parts of the spec. Add rows for these cases:
+   - `TypeError` for `None` and `bytes`.
+   - A `str` subclass.
+   - A joiner after a mark with no letter after it, for example `кто́-`.
+   - A variation selector outside U+FE00 to U+FE0F.
+
+10. Length and repetition:
+    - The "Do not ..." bullets in the Normalization section (accents, `ё`/`й`, stemming, stop words, language detection, Latin `i` and Cyrillic `і`) all follow from "apply only these steps". Several of them also repeat example rows. Change them to one sentence, for example: "Apply no other change: no accent removal, letter mapping, stemming, stop-word removal, or language detection."
+    - "This is intended." occurs twice. Keep it one time or delete it.
+    - The output bullet "If the text has no words (empty, only spaces, only digits, only punctuation), the list is empty" repeats three example rows. Cut it to "If the text has no words, the list is empty."
+    - Some example rows test the same behavior: `cat_dog`, `cat…dog`, `кот—пёс`, and `cat;dog/cat\x7cdog` all show that punctuation separates words. `a--b` and `a-'b` overlap. `кто-то` repeats `well-known`. You can merge them, unless each row is a separate test that you want to keep.
+    - The Performance section cannot be tested. A plain sort already satisfies the bound. You can delete the section or cut it to one sentence.
+
+11. The table row `a b c d e f g h i j k l` and the `кто́` row are not aligned with the other rows in the Markdown source. This is cosmetic only.

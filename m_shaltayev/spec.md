@@ -19,12 +19,8 @@ A news site shows a "Trending words" box beside each article. The function finds
 - The function returns a list of `(word, count)` tuples.
 - `word` is the lowercase form of the word (see "Normalization").
 - `count` is the number of words in `text` whose normalized form equals `word`.
-- The list has at most 10 items.
-- If the text has fewer than 10 different words, the list has one item for each different word.
+- The list holds at most 10 `(word, count)` pairs: the pairs with the smallest `(-count, word)`, in that order. Word order is Python `str` comparison with `<`.
 - If the text has no words (empty, only spaces, only digits, only punctuation), the list is empty.
-- Sort order: highest `count` first.
-- Tie-break: if two words have the same `count`, put the word with the lower Unicode code point order first (the order of Python `str` comparison with `<`).
-- The list holds the 10 words with the smallest sort key `(-count, word)`. When there are more than 10 different words, the tie-break also decides which words are in the list. For example, if 12 words each occur once, the list holds the 10 words that come first in code point order.
 
 ## What is a word
 
@@ -32,12 +28,11 @@ A news site shows a "Trending words" box beside each article. The function finds
 2. A letter is any character that Python `str.isalpha()` accepts.
 3. A mark is any character in Unicode category `Mn` or `Mc`, except the variation selectors. The variation selectors are U+180B to U+180D, U+180F, U+FE00 to U+FE0F, and U+E0100 to U+E01EF.
 4. A joiner is an apostrophe (`'` U+0027 or `’` U+2019) or a hyphen-minus (`-` U+002D).
-5. A word starts at a letter. Read from left to right. The word continues with each letter and each mark. It also continues over a joiner if a letter comes right after the joiner. The word keeps the joiner. The word ends at the first character that does not continue it.
-6. A joiner that has no letter before it or no letter after it separates words. Two joiners in a row separate words. A mark that comes after a joiner, after a digit, or after any other non-word character is not part of a word. It separates words.
-7. Every other character separates words. This includes spaces, newlines, digits, underscores, punctuation, symbols, emoji, variation selectors, enclosing marks (category `Me`, for example U+20E3), and invisible format characters (Unicode category `Cf`: zero-width space U+200B, zero-width joiner U+200D, soft hyphen U+00AD, byte order mark U+FEFF).
-8. Digits are never part of a word. A token like `abc123def` gives two words, `abc` and `def`. A number like `2024` gives no word.
-9. The rules use `str.isalpha()` for all scripts. Latin, Cyrillic, and Kazakh text is the target. Other scripts follow the same rules, but the tests do not check them.
-10. Characters that look like joiners but are not in rule 4 are not joiners. This is intended. `ʼ` (U+02BC) is a letter, so `donʼt` is one word that differs from `don't`. `‘` (U+2018), `´` (U+00B4), `‐` (U+2010), `‑` (U+2011), and `–` (U+2013) separate words.
+5. A word starts at a letter. Read from left to right. The word continues with each letter and each mark. It also continues over a joiner if a letter comes right after the joiner, even when the joiner comes after a mark. The word keeps the joiner. The word ends at the first character that does not continue it.
+6. A mark that does not come right after a letter or a mark is not part of a word. It separates words.
+7. Every other character separates words. This includes digits, variation selectors, and invisible format characters (Unicode category `Cf`).
+8. The rules use `str.isalpha()` for all scripts. Latin, Cyrillic, and Kazakh text is the target. Other scripts follow the same rules, but the tests do not check them.
+9. Characters that look like joiners but are not in rule 4 are not joiners. This is intended. `ʼ` (U+02BC) is a letter, so `donʼt` is one word that differs from `don't`. `‘` (U+2018), `´` (U+00B4), `‐` (U+2010), `‑` (U+2011), and `–` (U+2013) separate words.
 
 ## Normalization
 
@@ -69,8 +64,8 @@ Each row is a call `top_words(input)` and the expected result. The input is the 
 | `а б в а б`                          | `[("а", 2), ("б", 2), ("в", 1)]` | Tie-break also works for Cyrillic. |
 | `a b c d e f g h i j k l` | `[("a", 1), ("b", 1), ("c", 1), ("d", 1), ("e", 1), ("f", 1), ("g", 1), ("h", 1), ("i", 1), ("j", 1)]` | Limit is 10. The tie-break picks which 10. |
 | `a b c`                              | `[("a", 1), ("b", 1), ("c", 1)]` | Fewer than 10 words: return all.   |
-| `` (empty string)                    | `[]`                             | No words: empty list.              |
-| `   \n\t  `                        | `[]`                             | Only whitespace: empty list.       |
+| empty string                         | `[]`                             | No words: empty list.              |
+| `\x20\n\t`                           | `[]`                             | Only whitespace: empty list.       |
 
 ### Case
 
@@ -78,7 +73,6 @@ Each row is a call `top_words(input)` and the expected result. The input is the 
 | -------------------------- | --------------------- | ----------------------------- |
 | `Cat cat CAT`              | `[("cat", 3)]`        | Words are case-insensitive.   |
 | `Алматы алматы АЛМАТЫ`     | `[("алматы", 3)]`     | Lowercase works for Cyrillic. |
-| `Қазақ қазақ ҚАЗАҚ`        | `[("қазақ", 3)]`      | Lowercase works for Kazakh letters. |
 | `Ұлы ұлы`                  | `[("ұлы", 2)]`        | Kazakh `Ұ` lowercases to `ұ`. |
 
 ### Punctuation and separators
@@ -99,13 +93,13 @@ Each row is a call `top_words(input)` and the expected result. The input is the 
 | --------------------------- | ------------------------------------- | ------------------------------------------ |
 | `don't Don't`               | `[("don't", 2)]`                      | Inner apostrophe joins.                    |
 | `don't don’t`               | `[("don't", 2)]`                      | Curly apostrophe equals straight one.      |
-| `'cat' dogs'`               | `[("cat", 1), ("dogs", 1)]`           | Edge apostrophes are removed.              |
+| `'cat' dogs'`               | `[("cat", 1), ("dogs", 1)]`           | Edge apostrophes are not part of a word.   |
 | `well-known well-known`     | `[("well-known", 2)]`                 | Inner hyphen joins.                        |
-| `-cat- --dog--`             | `[("cat", 1), ("dog", 1)]`            | Edge hyphens are removed.                  |
+| `-cat- --dog--`             | `[("cat", 1), ("dog", 1)]`            | Edge hyphens are not part of a word.       |
 | `a--b`                      | `[("a", 1), ("b", 1)]`                | Two joiners in a row do not join.          |
 | `a-'b`                      | `[("a", 1), ("b", 1)]`                | Two different joiners in a row do not join. |
-| `кто-то`                    | `[("кто-то", 1)]`                     | Hyphen rule also works for Russian.        |
-| `жұмыс-қа`                  | `[("жұмыс-қа", 1)]`                   | Hyphen rule also works for Kazakh.         |
+| `кто-то`                    | `[("кто-то", 1)]`                     | Hyphen rule also works for Cyrillic.       |
+| `кто\u0301-то`              | `[("кто\u0301-то", 1)]`               | A mark before a joiner does not stop the join. |
 
 ### Digits
 
@@ -113,7 +107,7 @@ Each row is a call `top_words(input)` and the expected result. The input is the 
 | ------------------- | ---------------------------------- | ---------------------------------------- |
 | `2024 100 3.14`     | `[]`                               | Numbers are not words.                   |
 | `abc123def`         | `[("abc", 1), ("def", 1)]`         | Digits separate words.                   |
-| `covid-19`          | `[("covid", 1)]`                   | The digits are dropped. The hyphen then ends the word, so it is dropped too. |
+| `covid-19`          | `[("covid", 1)]`                   | A hyphen with no letter after it does not join. |
 | `3d 3D`             | `[("d", 2)]`                       | The digit is dropped. The letter stays.  |
 
 ### Unicode

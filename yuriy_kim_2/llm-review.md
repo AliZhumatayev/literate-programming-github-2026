@@ -1,58 +1,41 @@
 # LLM review of `spec.md`
 
-## Model and disclosure
+Prompting **Claude Opus 5.5** (`claude-opus-5-5`, Anthropic, used through
+Claude Code) with `Review spec.md`, with the revised `spec.md` as context,
+produced the following output; strikethrough indicates LLM output that I deemed
+incorrect or irrelevant.
 
-Model: **Claude Sonnet 5.5** (effort: _High_) (Anthropic), used through claude.ai. The first
-draft of `spec.md` was written with help from Claude; I then revised it, and the
-final version is the one reviewed below. The review was done by the same model
-family, so it is not an independent second-model review.
-
-## Last review
-
-Prompt used with Claude Sonnet 5.5, with the complete final `spec.md` as context:
-
-> Review spec.md
-
-Prompting Claude Sonnet 5.5 with `Review spec.md` produced the following output;
-strikethrough indicates LLM output that I deemed incorrect or irrelevant.
-
-Review output:
-
-> The spec is in good shape. I checked every expected output in the tables against the rules, and they are consistent. I found a few issues worth fixing and some gaps worth covering.
->
-> **Verified correct**
->
-> * The Unicode-escape examples: NFC composition of `и` + U+0306 into `й`, `е` + U+0308 into `ё`, and the non-composition of `о` + U+0301.
-> * The `m²`, `Ⅳ ½` cases. `[^\W\d_]` does keep `²`, `Ⅳ`, and `½`, so the “regex trap” claim holds.
-> * The `İstanbul` case, and the claim that U+0130 is the only unconditional multi-character lowercase mapping.
-> * The sort orders in Rule 5. `я` (U+044F) < `ё` (U+0451) < Kazakh letters (U+0492 and up), and Latin Extended-A/B sorting before Cyrillic.
-> * The tie-and-cutoff examples, including `k k a b c d e f g h i j`, which yields exactly 10 items.
+> I checked every example in `spec.md` against a reference implementation
+> written from the seven steps. All 43 table rows, the two `TypeError` cases and
+> the `str` subclass case pass on Python 3.13 (Unicode 15.1) and 3.14 (Unicode
+> 16.0). The spec is now about 125 lines, the step order is given once, and each
+> example tests a different behavior.
 >
 > **Issues**
 >
-> 1. Rule 1 overclaims for Greek. Python’s `str.lower()` applies the Final_Sigma rule, so `ΟΔΟΣ` lowercases to `οδος` (with final ς), while `οδοσ` stays with σ. These differ only by case but are counted as different words. Since the spec says “one set of Unicode rules applies to all text,” either document this as an exception or state explicitly that case-insensitivity means `str.lower()` behavior, final sigma included.
-> 2. “Each example would produce a different result under some other plausible reading” isn’t true of every row. For example, `Hello, world! Hello — world…` and `cat dog cat bird dog cat` are basic cases that most readings would pass. Either soften the sentence or audit the tables and cut or label the redundant rows.
-> 3. Rule 2’s combining-mark rule and Rule 3’s joiner rule interact, and the spec doesn’t say how. For example, `а́-b` (a letter, then a combining mark, then a hyphen) would not satisfy “a letter immediately before” the hyphen. This is probably intended, but one example would make it explicit.
+> 1. The Rule 1 row `Қала`, newline, `қала`, tab, `ҚАЛА` is written in prose.
+>    The spec says examples with invisible characters are written as Python
+>    literals with escapes, and newline and tab are invisible. Write it as
+>    `"Қала\nқала\tҚАЛА"`.
+> 2. Rule 7 accepts `str` subclasses but doesn't say whether a subclass's
+>    overridden methods (for example a custom `lower()`) are used. The example
+>    `class S(str): pass` overrides nothing, so it doesn't decide this. State
+>    that the text is treated as a plain `str`, for example by converting it
+>    with `str(text)` first.
+> 3. ~~Rule 2 says everything that is not a letter separates words, but Rule 3
+>    then lets `-` and `'` join words. Rule 2 should mention the exception.~~
 >
-> **Gaps in coverage**
+> **Not issues**
 >
-> * A word containing a Latin Extended Additional letter (`ạ`), since Rule 5 mentions it but no word test uses it.
-> * Unicode whitespace other than ASCII space and tab, such as NBSP (U+00A0) and U+2028, to confirm they separate words.
-> * A repeated-apostrophe or hyphen-chain case like `rock-'n'-roll`, to pin down how the joiner rule applies at the edges of a chain.
-> * An exactly-10-distinct-words input with no ties, to confirm the cutoff boundary.
-> * A single-character input and a string of only combining marks (expected `[]`).
-> * Greek final sigma, if you keep item 1 as a documented behavior.
->
-> Do you want me to draft the additional test rows, or write a test file that runs these examples against a `top_words` implementation?
+> - The step order is unambiguous, and the joiner check uses the text after
+>   NFC, `lower()` and the `’` replacement, as the `İ-i` and `й-й` rows show.
+> - Ties and the cutoff are deterministic.
+> - "Python 3.13 or later" matches the versions the examples were checked on.
 
 ## Notes on the feedback
 
-- Issue 1, Greek final sigma in Rule 1:
-- Issue 2, "different result under another reading" claim:
-- Issue 3, combining mark next to a hyphen (Rules 2 and 3):
-- Gap, Latin Extended Additional letter (`ạ`):
-- Gap, Unicode whitespace (NBSP, U+2028):
-- Gap, hyphen/apostrophe chain (`rock-'n'-roll`):
-- Gap, exactly 10 distinct words with no ties:
-- Gap, single-character input and only combining marks:
-- Gap, Greek final sigma example:
+- Issue 1: fixed. The row now uses a Python literal.
+- Issue 2: fixed. Rule 7 now says the input is processed as `str(text)`, so
+  overridden methods are not used.
+- Issue 3: not changed. Rule 3 defines a word explicitly as a run of letters
+  plus joiners, and Step 5 already points to both rules.

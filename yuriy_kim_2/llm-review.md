@@ -3,9 +3,9 @@
 ## Last review
 
 Prompting **Claude Opus 5.5** (`claude-opus-5-5`, Anthropic, used through
-Claude Code) with `Review spec.md`, with the final 120-line `spec.md` as
-context, produced the following output; strikethrough indicates LLM output
-that I deemed incorrect or irrelevant.
+Claude Code), medium effort, with `Review spec.md` and the final 120-line
+`spec.md` as context produced the following output; strikethrough indicates
+LLM output that I deemed incorrect or irrelevant.
 
 > I checked every example in `spec.md` against a reference implementation
 > written from the seven steps: all 29 table rows, the Rule 6 inputs, and the

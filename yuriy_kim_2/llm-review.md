@@ -8,7 +8,7 @@ incorrect or irrelevant.
 > I checked every example in `spec.md` against a reference implementation
 > written from the seven steps. All 43 table rows, the two `TypeError` cases and
 > the `str` subclass case pass on Python 3.13 (Unicode 15.1) and 3.14 (Unicode
-> 16.0). The spec is now about 125 lines, the step order is given once, and each
+> 16.0). The spec is now 147 lines (down from 275), the step order is given once, and each
 > example tests a different behavior.
 >
 > **Issues**

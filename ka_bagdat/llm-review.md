@@ -8,28 +8,26 @@ OpenAI GPT-6 (ChatGPT).
 
 > Review my `spec.md` for the Top Words problem. Check if the requirements are clear and complete. Find any missing details or ambiguous rules that could lead to different results. Pay attention to word counting, punctuation, capitalization, sorting, and edge cases. Explain any problems in simple English and suggest improvements.
 
-## Full output of the latest review
+## Full output of this final review
 
-**Overall:** The specification is clear and detailed. It defines the function's input and output, word boundaries, normalization, counting, sorting, and edge cases. A developer should be able to implement it without choosing different rules for common inputs.
+The revised specification gives a deterministic result for each input on a particular Python interpreter. It explicitly defines the argument type, normalization sequence, letter and mark categories, word boundaries, counting, sorting, and the top-ten limit.
 
-**1. Word counting — Clear.** Every occurrence is counted, including common words. Different forms such as `run`, `runs`, and `running` remain separate. There is no stemming or stop-word removal.
+1. **Python and Unicode versions — addressed.** The text says that Unicode properties and `casefold()` follow the running Python interpreter, rather than claiming the same result on every Unicode database version. That is a valid choice, and the limitation is explicit.
+2. **Normalization and case folding — addressed.** The first rule applies NFC, case folding, then NFC. It explicitly says tokenization happens after those steps. The Turkish `İ` example shows that case folding can introduce a combining mark that survives NFC.
+3. **Invisible format characters — addressed.** Soft hyphen, zero-width joiner, and zero-width non-joiner are explicitly separators. This can split a word copied from a web page, but it is now a documented policy, not an accidental detail.
+4. **Apostrophes — addressed.** Only ASCII `'` and U+2019 `’` are allowed inside a word, and only with letters immediately on both sides. U+02BC, U+2018, and U+2032 are explicitly separators. This avoids treating U+02BC as an ordinary letter just because its Unicode category is `Lm`.
+5. **Combining marks near apostrophes — addressed.** An apostrophe after a mark is a separator even if a letter occurs earlier in the same word. The spec states this choice and includes a case with a combining mark that remains decomposed after NFC.
+6. **Wording and input type — addressed.** The apostrophe rule uses the words “characters immediately before and after.” The type check is specified as `isinstance(text, str)`, so subclasses are accepted, but `bytes` and `None` are rejected.
+7. **Output and side effects — addressed.** The contract says to return a list of tuples, not print it, and to have no externally observable side effects. The unneeded statement that a string input is not modified has been removed.
+8. **Examples — addressed.** Inputs are written as Python expressions, including `""`, `None`, and `b"cat"`. Extra examples cover Kazakh-specific case pairs, Russian `е` versus `ё`, isolated marks, curly quotes around words, mixed-script lookalikes, and a frequency count that changes the top-ten cutoff.
+9. **Counting and sorting — clear.** Stop words are counted; related word forms are not merged. Results sort by frequency first and by normalized Python string order for ties. The ten-result limit is applied after sorting.
+10. **Complexity — stated appropriately.** There is no arbitrary input size limit and no prescribed algorithm. This is reasonable for a behavior specification.
 
-**2. Punctuation — Clear.** Punctuation separates words, with a precise exception for straight and curly apostrophes placed directly between letters. Hyphens, numbers, and underscores are separators. The specification gives examples for these rules.
+**Final conclusion:** I found no remaining major ambiguous behavior in the revised specification. The rules are specific enough to produce one expected result on a given Python interpreter. A future implementation should still be checked against the examples, particularly Unicode edge cases; this review did not execute the implementation.
 
-**3. Capitalization and languages — Clear.** The NFC → `casefold()` → NFC process is stated explicitly. This handles uppercase and lowercase characters and supports the English, Russian, and Kazakh text required by the assignment. The `Straße` example also checks a nontrivial case-folding behavior.
+## My notes on feedback
 
-**4. Sorting — Clear.** Results are sorted by decreasing count, followed by Python string order when counts tie. The first ten entries are kept only after sorting. This removes ambiguity about ties at the tenth position.
-
-**5. Edge cases — Clear.** Empty text and text without words return `[]`. Inputs that are not strings raise `TypeError`. The output is a list of `(word, count)` tuples, not printed text.
-
-**6. Unicode combining marks — Small wording improvement suggested.** The rule for a combining mark being “attached” to a letter could be expressed more precisely. For example, a word may have multiple consecutive combining marks, and each should remain part of the same word. Suggested revision: a combining mark belongs to a word if it follows a letter or another included combining mark in that word; an isolated combining mark is a separator.
-
-**7. Examples — Consistent.** The listed expected outputs agree with the counting, sorting, and tokenization rules, including the mixed-language and ten-word examples.
-
-**Conclusion:** I found one minor wording issue about consecutive combining marks, not a major contradiction. With that wording clarified, the specification is sufficiently precise to guide one predictable result for the tested cases. No additional changes to the function interface or ranking rules are necessary.
-
-## My notes on the review
-
-- **Accepted:** The comment about combining marks. The final `spec.md` now explicitly allows a combining mark after another included combining mark in the same word.
-- **Rejected or irrelevant feedback:** None.
-- **Clarification:** This document records the final review and the corresponding final specification. The review is about the `Top Words` specification, not the unrelated SIS1 assignment.
+- **Accepted:** All five substantive issues, all wording issues, and the requested edge-case examples from the instructor's Claude Opus 5.5 review. The revised `spec.md` addresses them directly.
+- **Accepted (optional):** Added a statement that input size has no artificial limit; did not require a particular performance complexity.
+- **Rejected feedback:** None. For the policy choices where Claude offered alternatives (e.g., remove format characters or split at them), I chose an explicit rule and documented it.
+- **Review method:** The review above is of the revised specification. It is a textual review; it does not claim to have run code.

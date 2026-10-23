@@ -1,92 +1,70 @@
-# LLM review of spec.md
+# Review of spec.md
 
-Prompting Claude Opus 5.5 (model `claude-opus-5-5`), extra high effort, with
-`Review spec.md` produced the output below. Strikethrough indicates LLM output
-that I deemed incorrect or irrelevant, and each **Note** gives my reason or
-says what I changed.
+Prompting Claude Opus 5.5, extra high effort, with `Review spec.md` produced
+the following output; strikethrough indicates LLM output that I deemed
+incorrect or irrelevant, and each **Note** says why. The session could read
+files but not run code.
 
-- **LLM:** Claude Opus 5.5, extra high effort, in a fresh non-interactive
-  session started from this directory on 21 October 2026. The session could
-  only read files (Read, Grep, and Glob tools), so it could not run Python.
-- **Exact prompt:** `Review spec.md`
-- **Command:**
-  `claude -p "Review spec.md" --model claude-opus-5-5 --effort xhigh --allowedTools "Read,Grep,Glob"`
-
-## Earlier rounds
-
-I ran the same prompt, each time in a new session, after every revision. The
-last review is round 8, below. Between rounds, I ran every example row against
-a reference implementation to confirm the expected outputs.
-
-| Round | Main findings                                                                                                                                                                                                                                        | What I changed                                                                                                                                                                         |
-| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1     | The `\uXXXX` escapes the tables promised were missing: the file had been saved with raw invisible and combining characters, so some rows looked identical. Results depend on the Unicode version. U+2010 and U+2011 hyphens split words. Return types were loose. | Restored every escape. Made U+2010 and U+2011 joiners. Stated the Unicode-version dependence, the stopword trade-off, and exact types. Added rows for a joiner after a mark and for `ё` sorting. |
-| 2     | `re.findall(r"[^\W\d_]+", ...)` passed every row although it accepts `²`, `½`, and `Ⅻ`. Three rows used `ё` and `ә` without escapes. "Word" and "key" were mixed up. A claim about full-width letters was false on Python 3.12+. Word joiners and byte-order marks split words. | Added the `x²` row, escaped those rows, renamed the result to `(key, count)`, and corrected the claim. Step 2 now deletes every format character (category Cf).                      |
-| 3     | The first NFC step was untested, and its stated reason was wrong. No reasons were given for keeping stress marks and `ʼ`. The Kazakh Latin `I`/`İ` consequence and the cost of letters-only words were understated.                              | Added the Greek U+0345 row with the real reason, reasons in section 5, the costs (`MP3` gives `mp`, `2024-го` gives `го`), and a row for U+034F COMBINING GRAPHEME JOINER.         |
-| 4     | `casefold()` merges ligatures such as `ﬁ`, which contradicted the NFKC bullet. `XXI век` and abbreviations with periods had no rows. The supported-versions claim was unchecked.                                                                    | Added the `ﬁle`, `XXI век`, and `U.S. т.е.` rows. Ran every row on CPython 3.10 to 3.14 and changed the requirement to Python 3.10 or newer.                                         |
-| 5     | No row had more than one joiner in a word. Look-alike apostrophes and the minus sign were untested.                                                                                                                                                  | Added the `Ростов-на-Дону Кот-д’Ивуар` and `don‘t don´t x−y` rows, and stated that only typographic forms of the same punctuation merge.                                            |
-| 6     | No errors. Gaps where a wrong implementation would still pass every row: a joiner followed by a mark, an unnamed format character, Mc and Me marks, case-folding the whole text first, and `str` subclasses.                                       | Added a row for each gap and defined how `str` subclasses are handled.                                                                                                                 |
-| 7     | No errors. Superscript letters are letters. `г.` followed by a no-break space and lone surrogates had no rows. The spec did not say why zero-width spaces are deleted. I rejected a `Mock(spec=str)` point and a Python 3.15 point, for the reasons given below. | Added the three rows and the zero-width-space reason.                                                                                                                                  |
-
-## Last review (round 8)
-
-The line numbers in the review refer to the version it reviewed. The fixes
-marked "applied after this review" changed only prose: every table row is
-byte-for-byte the same as in the reviewed version.
-
-> I found no wrong expected outputs in `spec.md`. It's an unusually precise spec, and the issues below are mostly about where things are stated, not bugs in the rules.
+> I reviewed the working copy of `spec.md`, including your uncommitted changes. It's a strong spec: sections 1–2 give a short procedure someone could implement directly, and the tables test the hard cases rather than repeating easy ones. I found no errors in any table row. I'd still raise three design points before you finalise it.
 >
-> **What I checked:**
-> - **Table rows:** I traced every row in all five tables through section 2 by hand, including the tricky ones (U+0345/U+1FB4 Greek, ǰ, İ/ı, `где\u0301-то`, the cutoff rows), and checked the "Rules out" outputs too. I couldn't run Python because shell access is blocked in this session, so this is checked against Unicode data from memory, not executed.
-> - **The file itself:** it has no stray invisible characters (NBSP, ZWSP, soft hyphen, BOM, variation selectors) and no mixed Latin/Cyrillic words. The only literal combining marks are U+0301 in the section 5 prose; every table row uses escapes.
-
-**Note:** For the record, I did run them: every row was executed against a reference implementation on CPython 3.10, 3.11, 3.12, 3.13, and 3.14, and all 60 pass.
-
-> ## Worth fixing
+> **How I checked the examples.** I wasn't allowed to run shell commands here, so I couldn't execute Python. Instead I worked through all 33 table rows by hand against the Unicode data: character categories, case-folding rules and NFC composition. Every expected output follows from section 2. The hardest rows also hold:
+> - **`"\u03b1\u0345\u0301 …"` (`spec.md:87`):** NFC first moves the acute accent before the ypogegrammeni and combines everything into U+1FB4. Case-folding that gives `ά` + `ι` (U+03AC U+03B9). The lone `\u0345x` is dropped as an orphan mark; folding the whole text first would wrongly turn it into the word `ιx`.
+> - **`ǰ` / `J\u030c` (`spec.md:86`):** both fold to `j` + caron, and NFC rebuilds U+01F0.
+> - **`İ` (`spec.md:85`):** it folds to `i\u0307`, NFC leaves that alone, and `ı` doesn't fold at all.
 >
-> 1. **The str-subclass rule is missing from the procedure.** Section 1 says to treat subclass instances as `str.__str__(text)` (`spec.md:43-47`). Step 1 of section 2 (`spec.md:99`) only checks `isinstance`. Since section 2 is "the procedure `top_words` must match," make the conversion part of step 1. It matters in practice: `unicodedata.normalize` returns its argument unchanged when the text is already normalized, so a subclass instance can pass through and reach overridden methods.
->    - ~~There's also a small hole in the "only one correct value" promise. `isinstance(unittest.mock.Mock(spec=str), str)` is `True` because it fakes `__class__`. Item 2 only covers real subclasses, so that input has no defined result. Requiring `issubclass(type(text), str)` closes it.~~
+> Running the tables as tests on Python 3.10 and 3.14 would still be worth doing.
 
-**Note:** I accepted the first point and applied it after this review: step 1 of section 2 now continues with `str.__str__(text)`. That moves a rule section 1 already stated into the procedure, so no output changes. I rejected the `Mock` point. I ran `top_words(unittest.mock.Mock(spec=str))` on CPython 3.10 and 3.14, and following item 2 already gives a defined result there: `TypeError`, because `str.__str__` refuses anything that is not really a `str`. A mock object is not article text either.
+**Note:** I ran all 33 rows against a reference implementation on CPython 3.10 through 3.14; all pass.
 
-> 2. ~~**The tested-versions claim will go stale, and nothing re-checks it.** Item 7 says every row was checked on CPython 3.10–3.14 (`spec.md:67-68`), while item 6 allows any version from 3.10 up. Python 3.15 is due around now and likely ships a newer Unicode version. There's no test file in the directory, so the claim is only as good as the last manual run. Turning the tables into a pytest or doctest would let you re-check it and extend the range.~~
-
-**Note:** I rejected this. Item 7 claims only the versions the rows were actually run on (CPython 3.10.16, 3.11.15, 3.12.8, 3.13.1, and 3.14.8, all 60 rows passing), and it already says other Unicode versions may differ. Python 3.15.0 was released on 9 October 2026, but I had not run the rows on it, so the claim stays limited to the versions above. A test file would also put a third file in this directory, and the assignment asks for exactly `spec.md` and `llm-review.md`.
-
-> 3. **It's unclear which parts are normative.** The intro says sections 1–2 are normative and 3–7 follow from them (`spec.md:14-18`). That leaves two gaps:
->    - Section 1 contains a table: is it normative?
->    - The unnumbered "How to read the tables" section defines the escape convention but has no status.
+> ## Findings
 >
->    One sentence such as "all example tables are informative; prose in 1–2 wins" would settle both.
-
-**Note:** I accepted this and applied it after this review. The introduction now says the prose of sections 1 and 2 and the escape convention are normative, and every table, including the one in section 1, is informative.
-
-> ## Wording fixes
+> ### ~~1. Digits leave junk fragments that also inflate real words (most important)~~
+> ~~`spec.md:46-47`, row at `:62`~~
 >
-> 4. **`spec.md:140`** says "quotes … split". Quotes at word edges are actually dropped, not split. A straight `'` with letters on both sides (`said'hi`) does join.
-> 5. **`spec.md:161-163`** says "Any other mark is discarded: one at the start of a word, and one right after a joiner". The colon makes this read as a complete list, but marks after a space or digit are dropped too. Also, by the definition, a word can never start with a mark. Something like "any mark not preceded by a letter or kept mark (after a space, digit, joiner, …)" would be accurate.
-> 6. **`spec.md:209-210`** says "A word that starts a sentence with I or İ". The same problem hits every capitalised occurrence: names and all-caps headlines too.
-
-**Note:** I accepted all three and applied them after this review, as wording changes only.
-
-> ## Optional additions
+> ~~The `5G → g` example makes this look harmless, but numbers with attached letters are common in all three languages:~~
 >
-> - ~~**Emoji that count as letters:** U+2139 ℹ is category Ll, so `"ℹ️ Note"` gives the key `"\u2139\ufe0f"`. Section 2 handles this consistently, but section 3 tells readers symbols are separators. One table row would pin it down; confirm with `unicodedata.category("\u2139")`.~~
+> | ~~Input~~ | ~~Output under this spec~~ |
+> | --- | --- |
+> | ~~`"в 1990-х годах"`~~ | ~~`х` is counted~~ |
+> | ~~`"3-я неделя"`~~ | ~~`я` is counted, which is also the real word "я" ("I")~~ |
+> | ~~`"2-ші орын"`, `"сағат 10-да"`~~ | ~~`ші` and `да` are counted; `да` is also a real Kazakh word~~ |
+> | ~~`"the 1990s"`, `"21st"`, `"5pm"`~~ | ~~`s`, `st`, `pm` are counted~~ |
+>
+> ~~So these aren't just extra noise entries in the box: they add to the counts of genuine words like `я` and `да`, which goes against the spec's own goal of counting real words.~~
+>
+> ~~**Suggested fix:** let decimal digits (category `Nd`) be part of a word, discard any word with no letter, and keep the digits in the key. That gives `covid-19`, `5g`, `1990-х`, `2-ші`. Pure numbers still never count, and the `x²` row stays the same because `²` isn't `Nd`. The weaker option is to drop letter runs that touch a digit, but then `covid` is lost. Either way, add one Russian or Kazakh row so the result is visible in the tables.~~
 
-**Note:** I rejected this as irrelevant. Section 2 defines a letter by Unicode category, and U+2139 is category Ll, so the spec already says it is a letter. It is not news vocabulary, and a row for it would pin down nothing new.
+**Note:** Letters-only words are a deliberate decision, pinned by the `5G` row; these fragments are its accepted cost.
 
-> - ~~**Arabic-script Kazakh:** Kazakh is also written in Arabic script, in China and Mongolia. The procedure handles it reasonably (letters, marks for vowel signs, spaces between words), but the spec only mentions Cyrillic and Latin. Either a line in section 7 or a sentence in section 3 would cover it. As with full-width Latin, Arabic presentation forms would stay separate from the base letters.~~
+> ### ~~2. Case-insensitivity breaks for Kazakh written in Latin script~~
+> ~~`spec.md:77`, `:85`~~
+>
+> ~~The 2021 Kazakh Latin alphabet pairs `İ/i` and `I/ı` the way Turkish does. With plain `casefold()`, the same word splits depending on capitalisation:~~
+> - ~~`"İs is"` gives `[("is", 1), ("i\u0307s", 1)]`.~~
+> - ~~A capital `I` (which means `ы`) folds to `i`, never to `ı`.~~
+>
+> ~~So a word at the start of a sentence never merges with its lowercase form, and the box would show `i̇` with a stray combining dot. Avoiding locale-specific folding is a reasonable choice, but the spec should say what it costs. Either add "Kazakh in Latin script" to the out-of-scope line, or add one sentence to section 4 saying capitalised Latin-script Kazakh words won't merge.~~
 
-**Note:** I rejected this as irrelevant. The procedure already gives a defined result for Arabic-script text, as the review says, and a sentence about it would not change any return value.
+**Note:** Section 4 already says folding is not locale-aware, and the `İ` row shows the result; the longer explanation was cut to keep the spec short.
 
-> I'd leave the documented trade-offs alone (digits splitting `5G` into `g`, no stopwords, folded keys shown in the box). They're deliberate and the spec already explains them.
+> ### ~~3. Breaking ties by code point works against Kazakh letters (optional)~~
+> ~~`spec.md:104-106`~~
+>
+> ~~Sorting ties by code point puts every Latin word before every Cyrillic one. It also puts all Kazakh-specific letters (`ә ғ қ ң ө ұ ү һ і`) after `я`. In a short article, where most words appear once or twice, words starting with `қ` (very common in Kazakh, as in `Қазақстан` and `қала`) will lose most ties. Breaking ties by first appearance would be just as deterministic. If you keep code-point order, one clause explaining why you rejected first appearance would help, since the spec currently rules it out without a reason.~~
 
-## Code check
+**Note:** Code-point order is deliberate; the section 6 row ending in `apple` rules out first appearance and alphabetical order.
 
-As the e-book asks, I also gave the final `spec.md`, and nothing else, to a
-fresh session of a different model, Claude Sonnet 5.5, with no shell access,
-using the prompt `Write top_words.py implementing spec.md.` Its code returned
-the expected output for all 60 rows on CPython 3.10 through 3.14. It also gave
-the same result as my reference implementation on 200,000 random inputs built
-from the characters the spec cares about. The code is not part of this
-submission.
+> ## Minor points
+> - ~~**`spec.md:31-32`:** `str.__str__(text)` is a clever way to turn a `str` subclass into a plain `str`, but the spec doesn't say why it's there, and no row tests it (a table can't show a subclass). A sentence such as "`str` subclasses are treated as their plain `str` value; overridden methods are ignored" would make the purpose clear.~~
+> - ~~**`spec.md:17` vs `:21-22`:** "deterministic" is only true for a given interpreter. Characters added in newer Unicode versions are letters on Python 3.14 but separators on 3.10. Something like "deterministic for a given Python version" would be accurate.~~
+
+**Note:** Step 1 already defines the behavior exactly, and the next bullet of section 1 ties results to the interpreter's Unicode database.
+
+> ## What works well
+> - The "Decision" column explains the reason for each row, so nobody has to guess at intent.
+> - Edge cases that most specs miss are covered on purpose: orphan marks, joiners followed by marks, all three mark categories, lone surrogates, NFC both before and after folding, and folding each word rather than the whole text.
+> - The claim that every example holds on CPython 3.10–3.14 is safe. Every character used is old and stable in Unicode, and case-folding and NFC don't change between those versions.
+>
+> ~~`llm-review.md` shows as deleted in your working tree. Do you want me to save this review there?~~
+
+**Note:** This file is that review.

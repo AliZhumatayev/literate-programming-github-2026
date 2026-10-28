@@ -1,12 +1,12 @@
 # LLM Review
 
-Prompting Claude Opus 5.5 with the prompt below produced the following output; strikethrough indicates LLM output that I deemed incorrect or irrelevant.
+Prompting Claude Opus 5.5 (model ID `claude-opus-5-5`, in the Claude app with a Python code-execution sandbox) with the prompt below produced the following output; strikethrough indicates LLM output that I deemed incorrect or irrelevant.
 
 **Prompt:**
 
 > Review spec.md as a specification for the Top words exercise. Check whether two independent Python 3 implementations could reasonably disagree on any valid input. Look for ambiguous interface, Unicode normalization and tokenization problems, case handling, ordering and ties, the 10-word cutoff, edge cases, and contradictions between the rules and the examples. Verify every example row by running a fresh implementation written from the rules alone. Separate real defects from intentional design decisions. Report remaining blockers and suggested improvements; do not rewrite the specification.
 
-After this review I applied suggestions 1–4 to `spec.md` (three example rows added, the rule 11 wording corrected, and the Unicode version pinned). Suggestions 5 and 6 are left as they are.
+**History.** This is the last of several review rounds. The previous round (in my first commit) suggested fixes 1–4, which are now applied: rule 11's wording about stress marks was corrected, the Unicode version is pinned, and rows 37–39 were added. A later round with the same prompt found that lowercasing character by character instead of the whole text (Greek final sigma) was not caught by any row, that my first wording of the final-sigma rule was wrong (case-ignorable characters include `.`, `:`, `^` and the backtick, not only `'`), and that U+02BC from rule 3 had no example. I fixed rule 6 and added rows 40–43. The output below is the review of the resulting spec.
 
 ---
 
@@ -14,68 +14,63 @@ After this review I applied suggestions 1–4 to `spec.md` (three example rows a
 
 ### Overall assessment
 
-The specification defines one result for every `str` input and a `TypeError` for every other type. I found no blocking ambiguity and no contradiction between the normative rules and the examples. One explanatory sentence in rule 11 is inaccurate, and three behaviors that independent implementations commonly get wrong have no example. These are listed below.
+The specification defines exactly one result for every `str` input under the pinned reference environment, and a `TypeError` for every other type. I found no blocking ambiguity, no contradiction between the rules and the examples, and no untested decision. Only cosmetic suggestions remain.
 
 ### Method
 
-1. **Fresh implementation.** I wrote a new `top_words` from the rules alone. It classifies every character as letter, joiner or separator and finds words with the regex `L+(?:JL+)*` over that class string.
-2. **Example rows.** I parsed all 36 rows directly from `spec.md` (inputs and expected outputs read with `ast.literal_eval`). All 36 match, including both `TypeError` rows.
-3. **Differential test.** I compared it with a second, differently structured implementation (a character-by-character scanner) on 200,000 random strings built from the characters the rules treat specially: Latin, Cyrillic and Kazakh letters, `İ`, Greek sigma, `ß`, every apostrophe and dash variant, combining marks, soft hyphen, zero-width space, digits, superscripts, Roman numerals, underscore and emoji. There were 0 disagreements.
-4. **Exhaustive check of rule 6.** For every Unicode code point that is a letter, I checked that `str.lower()` followed by deleting `Mn` characters gives only letters. No exception was found, so lowercasing never changes where words begin or end.
-5. **Performance.** 7 million characters of mixed text took 3.4 s, and a single 5-million-letter word took 1.2 s. Both are linear and consistent with the O(n log n) requirement.
+1. **Two independent implementations.** I wrote implementation A from the rules alone: it classifies each character as letter, joiner or separator and finds words with the regex `L+(?:JL+)*` over that class string. I wrote implementation B independently as a character-by-character scanner with no regular expressions.
+2. **Example rows.** I parsed all 43 rows directly from `spec.md` (inputs and expected outputs read with `ast.literal_eval`). Both implementations match all 43 rows, including both `TypeError` rows.
+3. **Differential test.** I compared A and B on 200,000 random strings built from the characters the rules treat specially: Latin, Cyrillic and Kazakh letters, `İ`, Greek `Σ`/`σ`, `ß`, every apostrophe and dash variant, combining marks (U+0300, U+0301, U+0306, U+0308), soft hyphen, zero-width characters, digits, `²`, `½`, `Ⅻ`, underscore, emoji, Devanagari, an enclosing mark, a spacing mark and a lone surrogate. There were 0 disagreements.
+4. **Mutation test.** For each plausible wrong reading of the spec, I built a variant implementation and checked that at least one example row rejects it:
+
+   | Wrong reading                                   | Rejected by rows       |
+   | ----------------------------------------------- | ---------------------- |
+   | Marks deleted before NFC                        | 29, 37, 38             |
+   | No NFC normalization                            | 29, 37, 38             |
+   | U+02BC not mapped to `'`                        | 43                     |
+   | `str.casefold()` instead of `str.lower()`       | 19, 40, 41             |
+   | Lowercasing character by character              | 40, 41                 |
+   | Letters matched with the regex `[^\W\d_]`       | 39                     |
+   | All dash characters join words                  | 17                     |
+   | Ties ordered by first occurrence                | 5, 7, 23, 25 and more  |
+   | Ties at the 10th place kept                     | 24, 25                 |
+
+   Every wrong reading is caught by at least one row.
+
+5. **Claims in the prose.** I checked the factual claims in rules 6 and 11 against CPython 3.13 (Unicode 15.1.0): `'ΟΔΟΣ'.lower()` gives `οδος`; `'ΟΣ-Α'.lower()` gives `ος-α`; `'ΟΣ.Α'`, `'ΟΣ:Α'`, `'ΟΣ^Α'` and `` 'ΟΣ`Α' `` keep `σ`; `'ΟΣ0Α'` and `'ΟΣ Α'` give `ς`; `и` + U+0300 composes to `ѝ` (U+045D) under NFC; decomposed `й` and `ё` compose before marks are deleted; U+02BC is category `Lm` (a letter), so without rule 3 it would stay inside a word. All claims hold.
+6. **Performance.** 7 million characters of mixed text took about 2.5 s, and a single 5-million-letter word took about 1.3 s. Both scale linearly, consistent with the O(n log n) requirement.
 
 ### Interface
 
-Unambiguous. The input is checked with `isinstance(text, str)`, so subclasses of `str` are accepted, and every other type raises `TypeError`. The output is a `list` of `(str, int)` tuples with at most 10 entries. The function is pure and uses only the standard library. Lone surrogates such as `"a\ud800b"` return `[("a", 1), ("b", 1)]` without an exception, so "no other exception for any `str` input" holds.
+Unambiguous. `isinstance(text, str)` accepts `str` subclasses; every other type raises `TypeError`. The output is a `list` of at most 10 `(str, int)` tuples. A lone surrogate (`"a\ud800b"`) returns `[("a", 1), ("b", 1)]` without an exception, so "no other exception for any `str` input" holds. The reference environment (CPython 3.13, Unicode 15.1.0) removes the earlier dependence on the Python version.
 
 ### Unicode normalization
 
-The order of steps (NFC, delete `Mn` and `Cf`, map apostrophes, lowercase, delete `Mn` again) is explicit. Two implementations that follow it agree.
-
-**Defect 1 (wording, non-blocking).** Rule 11 says it "removes Russian stress marks". That is true only for the acute accent. A grave accent on `и` or `е` has a precomposed form (`ѝ` U+045D, `ѐ` U+0450), so NFC merges it into the letter and the deletion step never sees it:
-
-| Input       | Result under the rules     | Result if "remove stress marks" is taken literally |
-| ----------- | -------------------------- | -------------------------------------------------- |
-| `"мѝр мир"` | `[("мир", 1), ("мѝр", 1)]` | `[("мир", 2)]`                                     |
-
-An implementer who trusts the sentence instead of the steps would disagree. Either correct the sentence or add this row, or both.
-
-**Suggestion 2.** No row shows decomposed `й` and `ё`. The breve U+0306 and diaeresis U+0308 are `Mn`, so an implementation that deletes marks _before_ NFC turns `й` into `и`. The `café` row already catches that wrong order for Latin, but a Russian row is more convincing for this site:
-
-| Input             | Result under the rules    | Marks deleted before NFC                         |
-| ----------------- | ------------------------- | ------------------------------------------------ |
-| `"йод йод ёж ёж"` | `[("йод", 2), ("ёж", 2)]` | `[("еж", 1), ("иод", 1), ("йод", 1), ("ёж", 1)]` |
+Unambiguous and covered. The step order (NFC, delete `Mn` and `Cf`, map apostrophes, lowercase the whole text, delete `Mn` again) is explicit. Rule 11 now correctly says that only marks without a precomposed form are removed, and rows 37 and 38 show the two consequences (`й`/`ё` survive; grave-accented `ѝ` is not merged with `и`).
 
 ### Tokenization
 
-Rules 1, 2, 4 and 5 are unambiguous. A letter is exactly `isalpha()`, a word is the leftmost maximal match of `L+ (J L+)*`, and everything else separates words.
-
-**Suggestion 3.** The most common way to write rule 1 in Python is the regex `[^\W\d_]+`. It is **not** equivalent to `isalpha()`: I found 1,151 code points that it matches but `isalpha()` rejects, for example superscript digits (`²`), vulgar fractions (`½`) and Roman numerals (`Ⅻ`). No row catches this.
-
-| Input      | Result under the rules | Regex `[^\W\d_]+`                 |
-| ---------- | ---------------------- | --------------------------------- |
-| `"x² ½ Ⅻ"` | `[("x", 1)]`           | `[("x²", 1), ("½", 1), ("ⅻ", 1)]` |
+Unambiguous and covered. A letter is exactly `str.isalpha()`, the difference from `[^\W\d_]` is stated and tested (row 39), and a word is the leftmost maximal match of `L+ (J L+)*`. Rule 3 maps `’` and `ʼ`, and both are now tested (rows 6 and 43).
 
 ### Case handling
 
-Unambiguous and covered. `str.lower()` (not `casefold()`) is applied to the whole text before words are found, and the `ß`, `İ` and Greek-sigma rows fix all three choices. That `Σ` before `''` becomes `σ`, not `ς`, follows from the order of steps. It is an intentional design decision, not a defect.
+Unambiguous and covered. Rule 6 now states the Final_Sigma condition correctly, including which characters are skipped, and rows 20, 40, 41 and 42 fix the behavior for an apostrophe, the end of a word, a hyphen and a period.
 
 ### Ordering, ties and the cutoff
 
-Unambiguous and covered. Equal counts are ordered by code point, not by first occurrence and not by locale. The cutoff takes exactly 10 entries after sorting, and the "11 words tied at count 2" row fixes which word is dropped. Code point order puts every Latin word before every Cyrillic word with the same count, and `қ` after all Russian letters. This is intentional and documented in rule 8.
+Unambiguous and covered by rows 23–25: code point order for ties, exactly 10 entries after sorting.
 
 ### Edge cases
 
-Covered: empty string, punctuation and digits only, fewer than 10 words, non-`str` input, `bytes` input, line-break hyphenation, double joiners, leading and trailing joiners, invisible characters.
-
-**Suggestion 4 (the only source of disagreement found).** The spec says only "Python 3". The letter, case and category properties come from the Unicode database bundled with the running Python: 15.1.0 in Python 3.13 and 16.0.0 in Python 3.14. Two implementations that are correct line by line can still disagree on letters added in a later Unicode version. Pin the reference version, for example "CPython 3.13, `unicodedata.unidata_version == "15.1.0"`".
+Covered: empty string, punctuation and digits only, fewer than 10 words, `None` and `bytes`, line-break hyphenation, double, leading and trailing joiners, invisible characters, unsupported scripts.
 
 ### Intentional design decisions (not defects)
 
-- Apostrophes `’` and `ʼ` are mapped to `'` and join words; `‘` and the backtick do not.
+- `‘` and the backtick are separators; only `’` and `ʼ` are mapped to `'`.
 - Digits are separators (`a1b` gives `a` and `b`).
-- `ё` and `е` are different letters; there is no transliteration, stemming or stop-word list.
-- Scripts that use combining vowel signs or no spaces are declared unsupported (rule 14). Their output is still fully determined.
+- `ё` and `е`, `ѝ` and `и`, and Latin and Cyrillic look-alikes are all different; there is no transliteration, stemming or stop-word list.
+- A Greek `Σ` before a hyphen inside a compound becomes `ς` (`ος-α`); this follows from lowercasing the whole text with `str.lower()`.
+- Scripts with combining vowel signs or without spaces are declared unsupported (rule 14); their output is still fully determined.
 
 ### Remaining blockers
 
@@ -83,9 +78,10 @@ None.
 
 ### Minor suggestions
 
-5. The Rule column uses the labels "basic" and "Function" instead of rule numbers.
-6. The rules are numbered in an order different from the processing order (rule 11 runs first). The paragraph before the rules gives the real order, so this affects only readability.
+1. The Rule column uses the labels "basic" and "Function" instead of rule numbers.
+2. The rules are numbered in an order different from the processing order (rule 11 runs first). The paragraph before the rules gives the real order, so this affects only readability.
+3. The raw Markdown of rows 37–43 is not padded to the same column widths as rows 1–36. It renders identically.
 
 ### Conclusion
 
-The spec is deterministic and internally consistent. Two independent implementations written from it agreed on all 36 rows and on 200,000 random strings. Apply suggestions 1–4 to remove the remaining wording risk and the Python-version dependence.
+The spec is deterministic, internally consistent and fully illustrated: two independently written implementations agree on all 43 rows and on 200,000 random strings, and every plausible wrong reading I tried is rejected by at least one row. No further changes are required.
